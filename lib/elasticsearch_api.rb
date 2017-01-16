@@ -91,7 +91,7 @@ class ElasticsearchApi
     },
     'Year' => {
       'type' => 'long'
-    },
+    }
   }.freeze
   ES_FIELDS_LIST = ES_FIELDS_MAPPING.keys.freeze
   ES_CONTENT_FIELDS = ['Track Number', 'Year', 'Name', 'Artist', 'Album Artist', 'Album', 'Genre'].freeze
