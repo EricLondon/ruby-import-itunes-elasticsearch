@@ -1,12 +1,104 @@
 require 'elasticsearch'
 require 'nokogiri'
 
-ES_ITUNES_INDEX = 'itunes_tracks'.freeze
-
 class ElasticsearchApi
+  ES_ITUNES_INDEX = 'itunes'.freeze
+  ES_FIELDS_MAPPING = {
+    'Album' => {
+      fields: {
+        raw: {
+          index: 'not_analyzed',
+          type: 'string'
+        }
+      },
+      'type' => 'string'
+    },
+    'Album Artist' => {
+      fields: {
+        raw: {
+          index: 'not_analyzed',
+          type: 'string'
+        }
+      },
+      'type' => 'string'
+    },
+    'Artist' => {
+      fields: {
+        raw: {
+          index: 'not_analyzed',
+          type: 'string'
+        }
+      },
+      'type' => 'string'
+    },
+    'Compilation' => {
+      'type' => 'boolean'
+    },
+    'Date Added' => {
+      'type' => 'date',
+      'format' => 'dateOptionalTime'
+    },
+    'Disabled' => {
+      'type' => 'boolean'
+    },
+    'Disc Count' => {
+      'type' => 'long'
+    },
+    'Disc Number' => {
+      'type' => 'long'
+    },
+    'File Folder Count' => {
+      'type' => 'long'
+    },
+    'Genre' => {
+      fields: {
+        raw: {
+          index: 'not_analyzed',
+          type: 'string'
+        }
+      },
+      'type' => 'string'
+    },
+    'Location' => {
+      'type' => 'string'
+    },
+    'Name' => {
+      fields: {
+        raw: {
+          index: 'not_analyzed',
+          type: 'string'
+        }
+      },
+      'type' => 'string'
+    },
+    'Play Count' => {
+      'type' => 'long'
+    },
+    'Rating' => {
+      'type' => 'long'
+    },
+    'Total Time' => {
+      'type' => 'long'
+    },
+    'Track Count' => {
+      'type' => 'long'
+    },
+    'Track ID' => {
+      'type' => 'long'
+    },
+    'Track Number' => {
+      'type' => 'long'
+    },
+    'Year' => {
+      'type' => 'long'
+    },
+  }.freeze
+  ES_FIELDS_LIST = ES_FIELDS_MAPPING.keys.freeze
+  ES_CONTENT_FIELDS = ['Track Number', 'Year', 'Name', 'Artist', 'Album Artist', 'Album', 'Genre'].freeze
+
   def initialize(options = {})
     options ||= {}
-    options[:itunes_music_library_path] ||= './iTunes Music Library.xml'
+    options[:itunes_music_library_path] ||= './Library.xml'
 
     raise 'iTunes Music Library not found' unless File.exist?(options[:itunes_music_library_path])
     @options = options
@@ -41,23 +133,23 @@ class ElasticsearchApi
   def index_itunes
     tracks = scan_itunes_xml_for_tracks
 
-    fields = ['Track ID', 'Track Number', 'Year', 'Date Added', 'Play Count', 'Rating',
-              'Name', 'Artist', 'Album Artist', 'Album', 'Genre', 'Location']
-    content_fields = ['Track Number', 'Year', 'Name', 'Artist', 'Album Artist', 'Album', 'Genre']
-    ignored_kinds = ['Ringtone', 'PDF document', 'Purchased MPEG-4 video file']
+    ignored_kinds = ['Ringtone', 'PDF document', 'Purchased MPEG-4 video file', 'Purchased AAC audio file']
+    # Kind == 'MPEG audio file'
 
     tracks.each do |track|
       next if track['Track Type'] == 'Remote'
       next if ignored_kinds.include?(track['Kind']) || track['Kind'] =~ /(book|app)$/i
       next if track['Album'] =~ /Voice Memos/i
 
+      track['Compilation'] = true if track.key?('Compilation')
+      track['Disabled'] = true if track.key?('Disabled')
       track['Rating'] = 0 if track.key?('Rating Computed')
 
-      body = track.select { |k, _v| fields.include?(k) }.merge(
-        'content' => track.map { |k, v| content_fields.include?(k) ? v.to_s : nil }.compact.join(' ')
+      body = track.select { |k, _v| ES_FIELDS_LIST.include?(k) }.merge(
+        'content' => track.map { |k, v| ES_CONTENT_FIELDS.include?(k) ? v.to_s : nil }.compact.uniq.join(' ')
       )
 
-      @client.index index: ES_ITUNES_INDEX, type: 'itunes_track', id: track['Track ID'], body: body
+      @client.index index: ES_ITUNES_INDEX, type: 'track', id: track['Track ID'], body: body
     end
 
     puts 'DONE.'
@@ -66,79 +158,8 @@ class ElasticsearchApi
   def create_mapping
     @client.indices.create index: ES_ITUNES_INDEX, body: {
       mappings: {
-        itunes_track: {
-          properties: {
-            Album: {
-              fields: {
-                raw: {
-                  index: 'not_analyzed',
-                  type: 'string'
-                }
-              },
-              type: 'string'
-            },
-            'Album Artist' => {
-              fields: {
-                raw: {
-                  index: 'not_analyzed',
-                  type: 'string'
-                }
-              },
-              type: 'string'
-            },
-            Artist: {
-              fields: {
-                raw: {
-                  index: 'not_analyzed',
-                  type: 'string'
-                }
-              },
-              type: 'string'
-            },
-            'Date Added' => {
-              format: 'dateOptionalTime',
-              type: 'date'
-            },
-            Genre: {
-              fields: {
-                raw: {
-                  index: 'not_analyzed',
-                  type: 'string'
-                }
-              },
-              type: 'string'
-            },
-            Location: {
-              type: 'string'
-            },
-            Name: {
-              fields: {
-                raw: {
-                  index: 'not_analyzed',
-                  type: 'string'
-                }
-              },
-              type: 'string'
-            },
-            'Play Count' => {
-              type: 'long'
-            },
-            Rating: {
-              type: 'long'
-            },
-            'Track ID' => {
-              type: 'long'
-            },
-            'Track Number' => {
-              type: 'long'
-            },
-            Year: {
-              type: 'long'
-            },
-            content: {
-              type: 'string'
-            }
-          }
+        track: {
+          properties: ES_FIELDS_MAPPING
         }
       }
     }

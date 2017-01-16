@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'optparse'
+require 'pry'
 
 $LOAD_PATH << File.dirname(__FILE__) + '/lib'
 require 'elasticsearch_api'
