@@ -16,8 +16,12 @@ OptionParser.new do |opts|
     options[:action] = :create_mapping
   end
 
-  opts.on('--index', 'Index iTunes') do |_v|
-    options[:action] = :index_itunes
+  opts.on('--index-tracks', 'Index iTunes Track') do |_v|
+    options[:action] = :index_itunes_tracks
+  end
+
+  opts.on('--index-playlists', 'Index iTunes Playlists') do |_v|
+    options[:action] = :index_itunes_playlists
   end
 end.parse!
 

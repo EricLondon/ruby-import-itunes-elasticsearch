@@ -98,7 +98,8 @@ class ElasticsearchApi
 
   def initialize(options = {})
     options ||= {}
-    options[:itunes_music_library_path] ||= './Library.xml'
+    # options[:itunes_music_library_path] ||= './Library.xml'
+    options[:itunes_music_library_path] ||= './Library-partial.xml'
 
     raise 'iTunes Music Library not found' unless File.exist?(options[:itunes_music_library_path])
     @options = options
@@ -130,7 +131,7 @@ class ElasticsearchApi
     end
   end
 
-  def index_itunes
+  def index_itunes_tracks
     tracks = scan_itunes_xml_for_tracks
 
     ignored_kinds = ['Ringtone', 'PDF document', 'Purchased MPEG-4 video file', 'Purchased AAC audio file']
@@ -153,6 +154,10 @@ class ElasticsearchApi
     end
 
     puts 'DONE.'
+  end
+
+  def index_itunes_playlists
+    playlists = scan_itunes_xml_for_playlists
   end
 
   def create_mapping
@@ -192,5 +197,46 @@ class ElasticsearchApi
       tracks << hash
     end
     tracks
+  end
+
+  def scan_itunes_xml_for_playlists
+    doc = Nokogiri::XML(File.open(@options[:itunes_music_library_path], 'r'))
+
+    playlists = []
+    doc.xpath('/plist/dict/array/dict').each do |node|
+      hash = {}
+      last_key = nil
+
+      node.children.each do |child|
+        next if child.blank?
+
+        if child.name == 'key'
+          last_key = child.text
+        else
+          if child.name == 'string'
+            hash[last_key] = child.text
+          elsif child.name == 'true'
+            hash[last_key] = true
+          elsif child.name == 'false'
+            hash[last_key] = false
+          elsif child.name == 'integer'
+            hash[last_key] = child.text.to_i
+          elsif child.name == 'array' && last_key == 'Playlist Items'
+            hash[last_key] = child.text.scan(/Track ID\s*(\d*)/).flatten
+          elsif child.name == 'data'
+            # skip
+          else
+            # TODO
+            binding.pry
+          end
+
+        end
+
+      end
+
+      playlists << hash
+
+    end
+    playlists
   end
 end
