@@ -186,11 +186,18 @@ class ElasticsearchApi
         if child.name == 'key'
           last_key = child.text
         else
-          hash[last_key] = if child.text =~ /^\d+$/
-                             child.text.to_i
-                           else
-                             child.text
-                           end
+          if child.name == 'string' || child.name == 'date'
+            hash[last_key] = child.text
+          elsif child.name == 'true'
+            hash[last_key] = true
+          elsif child.name == 'false'
+            hash[last_key] = false
+          elsif child.name == 'integer'
+            hash[last_key] = child.text.to_i
+          else
+            raise "Not yet implemented: #{child.name}"
+          end
+
         end
       end
 
@@ -226,8 +233,7 @@ class ElasticsearchApi
           elsif child.name == 'data'
             # skip
           else
-            # TODO
-            binding.pry
+            raise "Not yet implemented: #{child.name}"
           end
 
         end
