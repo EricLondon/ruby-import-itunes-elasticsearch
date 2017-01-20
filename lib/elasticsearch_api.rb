@@ -98,8 +98,8 @@ class ElasticsearchApi
 
   def initialize(options = {})
     options ||= {}
-    # options[:itunes_music_library_path] ||= './Library.xml'
-    options[:itunes_music_library_path] ||= './Library-partial.xml'
+    options[:itunes_music_library_path] ||= './Library.xml'
+    # options[:itunes_music_library_path] ||= './Library-partial.xml'
 
     raise 'iTunes Music Library not found' unless File.exist?(options[:itunes_music_library_path])
     @options = options
@@ -158,6 +158,10 @@ class ElasticsearchApi
 
   def index_itunes_playlists
     playlists = scan_itunes_xml_for_playlists
+    playlists.each do |playlist|
+      next if playlist['Name'] == 'Library'
+      @client.index index: ES_ITUNES_INDEX, type: 'playlist', id: playlist['Playlist ID'], body: playlist
+    end
   end
 
   def create_mapping
