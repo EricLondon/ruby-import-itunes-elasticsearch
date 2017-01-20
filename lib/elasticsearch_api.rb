@@ -237,11 +237,9 @@ class ElasticsearchApi
           end
 
         end
-
       end
 
       playlists << hash
-
     end
     playlists
   end
