@@ -96,38 +96,25 @@ class ElasticsearchApi
   ES_FIELDS_LIST = ES_FIELDS_MAPPING.keys.freeze
   ES_CONTENT_FIELDS = ['Track Number', 'Year', 'Name', 'Artist', 'Album Artist', 'Album', 'Genre'].freeze
 
-  def initialize(options = {})
-    options ||= {}
-    options[:itunes_music_library_path] ||= './Library.xml'
-    # options[:itunes_music_library_path] ||= './Library-partial.xml'
-
-    raise 'iTunes Music Library not found' unless File.exist?(options[:itunes_music_library_path])
-    @options = options
-
-    @client = Elasticsearch::Client.new log: true, host: 'localhost:9200'
+  def create_mapping
+    @client.indices.create index: ES_ITUNES_INDEX, body: {
+      mappings: {
+        track: {
+          properties: ES_FIELDS_MAPPING
+        }
+      }
+    }
   end
 
   def delete_index
     @client.indices.delete index: ES_ITUNES_INDEX
   end
 
-  def search_track(track_id)
-    results = @client.search index: ES_ITUNES_INDEX, body: {
-      query: {
-        filtered: {
-          filter: {
-            term: {
-              _id: track_id
-            }
-          }
-        }
-      },
-      size: 1
-    }
-    begin
-      results['hits']['hits'].first
-    rescue
-      nil
+  def index_itunes_playlists
+    playlists = scan_itunes_xml_for_playlists
+    playlists.each do |playlist|
+      next if playlist['Name'] == 'Library'
+      @client.index index: ES_ITUNES_INDEX, type: 'playlist', id: playlist['Playlist ID'], body: playlist
     end
   end
 
@@ -156,59 +143,38 @@ class ElasticsearchApi
     puts 'DONE.'
   end
 
-  def index_itunes_playlists
-    playlists = scan_itunes_xml_for_playlists
-    playlists.each do |playlist|
-      next if playlist['Name'] == 'Library'
-      @client.index index: ES_ITUNES_INDEX, type: 'playlist', id: playlist['Playlist ID'], body: playlist
-    end
+  def initialize(options = {})
+    options ||= {}
+    options[:itunes_music_library_path] ||= './Library.xml'
+    # options[:itunes_music_library_path] ||= './Library-partial.xml'
+
+    raise 'iTunes Music Library not found' unless File.exist?(options[:itunes_music_library_path])
+    @options = options
+
+    @client = Elasticsearch::Client.new log: true, host: 'localhost:9200'
   end
 
-  def create_mapping
-    @client.indices.create index: ES_ITUNES_INDEX, body: {
-      mappings: {
-        track: {
-          properties: ES_FIELDS_MAPPING
+  def search_track(track_id)
+    results = @client.search index: ES_ITUNES_INDEX, body: {
+      query: {
+        filtered: {
+          filter: {
+            term: {
+              _id: track_id
+            }
+          }
         }
-      }
+      },
+      size: 1
     }
+    begin
+      results['hits']['hits'].first
+    rescue
+      nil
+    end
   end
 
   private
-
-  def scan_itunes_xml_for_tracks
-    doc = Nokogiri::XML(File.open(@options[:itunes_music_library_path], 'r'))
-
-    tracks = []
-    doc.xpath('/plist/dict/dict/dict').each do |node|
-      hash = {}
-      last_key = nil
-
-      node.children.each do |child|
-        next if child.blank?
-
-        if child.name == 'key'
-          last_key = child.text
-        else
-          if child.name == 'string' || child.name == 'date'
-            hash[last_key] = child.text
-          elsif child.name == 'true'
-            hash[last_key] = true
-          elsif child.name == 'false'
-            hash[last_key] = false
-          elsif child.name == 'integer'
-            hash[last_key] = child.text.to_i
-          else
-            raise "Not yet implemented: #{child.name}"
-          end
-
-        end
-      end
-
-      tracks << hash
-    end
-    tracks
-  end
 
   def scan_itunes_xml_for_playlists
     doc = Nokogiri::XML(File.open(@options[:itunes_music_library_path], 'r'))
@@ -246,5 +212,39 @@ class ElasticsearchApi
       playlists << hash
     end
     playlists
+  end
+
+  def scan_itunes_xml_for_tracks
+    doc = Nokogiri::XML(File.open(@options[:itunes_music_library_path], 'r'))
+
+    tracks = []
+    doc.xpath('/plist/dict/dict/dict').each do |node|
+      hash = {}
+      last_key = nil
+
+      node.children.each do |child|
+        next if child.blank?
+
+        if child.name == 'key'
+          last_key = child.text
+        else
+          if child.name == 'string' || child.name == 'date'
+            hash[last_key] = child.text
+          elsif child.name == 'true'
+            hash[last_key] = true
+          elsif child.name == 'false'
+            hash[last_key] = false
+          elsif child.name == 'integer'
+            hash[last_key] = child.text.to_i
+          else
+            raise "Not yet implemented: #{child.name}"
+          end
+
+        end
+      end
+
+      tracks << hash
+    end
+    tracks
   end
 end
