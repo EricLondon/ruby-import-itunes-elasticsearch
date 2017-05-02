@@ -23,6 +23,10 @@ OptionParser.new do |opts|
   opts.on('--index-playlists', 'Index iTunes Playlists') do |_v|
     options[:action] = :index_itunes_playlists
   end
+
+  opts.on('--process-playlists', 'Process iTunes Playlists') do |_v|
+    options[:action] = :process_itunes_playlists
+  end
 end.parse!
 
 raise 'Nothing to do!' if options[:action].nil?

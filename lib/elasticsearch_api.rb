@@ -113,7 +113,21 @@ class ElasticsearchApi
   def index_itunes_playlists
     playlists = scan_itunes_xml_for_playlists
     playlists.each do |playlist|
-      next if playlist['Name'] == 'Library'
+      next if playlist['Name'] == 'Library' && playlist['Master'] == true
+      next if playlist['Name'] == 'Music' && playlist['Music'] == true
+      next if playlist['Name'] == 'TV Shows' && playlist['TV Shows'] == true
+      next if playlist['Name'] == 'Tones'
+      next if playlist['Playlist Items'].nil?
+
+      # top-level folder
+      if playlist['Folder'] == true && playlist['Parent Persistent ID'].nil?
+        playlist.delete 'Playlist Items'
+      end
+
+      unless playlist['Playlist Items'].nil?
+        playlist['Tracks'] = get_tracks(playlist['Playlist Items'])
+      end
+
       @client.index index: ES_ITUNES_INDEX, type: 'playlist', id: playlist['Playlist ID'], body: playlist
     end
   end
@@ -154,8 +168,37 @@ class ElasticsearchApi
     @client = Elasticsearch::Client.new log: true, host: 'localhost:9200'
   end
 
-  def search_track(track_id)
-    results = @client.search index: ES_ITUNES_INDEX, body: {
+  def process_itunes_playlists
+    results = @client.search index: ES_ITUNES_INDEX, type: 'playlist', size: 10_000
+    results['hits']['hits'].each do |result|
+      tracks = get_tracks(result['_source']['Playlist Items'])
+      result['_source']['Tracks'] = tracks
+      @client.index index: ES_ITUNES_INDEX, type: 'playlist', id: result['_id'], body: result['_source']
+    end
+  end
+
+  def get_tracks(track_ids)
+    results = @client.search index: ES_ITUNES_INDEX, type: 'track', body: {
+      query: {
+        filtered: {
+          filter: {
+            terms: {
+              _id: track_ids
+            }
+          }
+        }
+      },
+      size: 10_000
+    }
+    if results['hits']['total'] > 10_000
+      # TODO: finish this
+      binding.pry
+    end
+    results['hits']['hits'].map { |hit| hit['_source'] }
+  end
+
+  def get_track(track_id)
+    results = @client.search index: ES_ITUNES_INDEX, type: 'track', body: {
       query: {
         filtered: {
           filter: {
